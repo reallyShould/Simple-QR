@@ -2,6 +2,13 @@
 
 Simple QR is a small native macOS app for generating QR codes from text or links. Everything is processed locally: entered content is not uploaded anywhere.
 
+## Screenshots
+
+<p align="center">
+  <img src="Screenshots/idle.png" alt="Simple QR waiting for input" width="49%">
+  <img src="Screenshots/generated-qr.png" alt="Simple QR with a generated QR code" width="49%">
+</p>
+
 ## Features
 
 - Live QR code preview
