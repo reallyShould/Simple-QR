@@ -1,61 +1,136 @@
-import SwiftUI
 import AppKit
 import CoreImage
 import CoreImage.CIFilterBuiltins
+import SwiftUI
 import UniformTypeIdentifiers
 
 struct ContentView: View {
     @State private var text = ""
+    @State private var errorMessage: String?
 
-    private let context = CIContext()
+    private var qrImage: NSImage? {
+        QRCodeGenerator.image(for: text)
+    }
 
     var body: some View {
-        VStack(spacing: 16) {
-            Text("Generate QR code")
-                .font(.title2)
+        VStack(spacing: 20) {
+            VStack(spacing: 6) {
+                Text("Simple QR")
+                    .font(.largeTitle.bold())
 
-            TextField("Your text...", text: $text)
+                Text("Create a QR code locally — your data never leaves this Mac.")
+                    .foregroundStyle(.secondary)
+            }
+
+            TextField("Enter text or a link", text: $text)
                 .textFieldStyle(.roundedBorder)
-                .frame(maxWidth: 500)
+                .frame(maxWidth: 520)
+                .accessibilityLabel("QR code contents")
 
             Group {
                 if text.isEmpty {
-                    Image(systemName: "qrcode")
-                        .resizable()
-                        .scaledToFit()
-                        .foregroundStyle(.secondary)
-                } else if let qrImage = generateQRCodeImage(from: text) {
+                    ContentUnavailableView(
+                        "Your QR code will appear here",
+                        systemImage: "qrcode",
+                        description: Text("Enter text or a link above to get started.")
+                    )
+                } else if let qrImage {
                     Image(nsImage: qrImage)
                         .interpolation(.none)
                         .resizable()
                         .scaledToFit()
+                        .accessibilityLabel("Generated QR code")
                 } else {
-                    Text("Error generating QR code")
-                        .foregroundStyle(.red)
+                    ContentUnavailableView(
+                        "QR code could not be created",
+                        systemImage: "exclamationmark.triangle",
+                        description: Text("Try using shorter text.")
+                    )
                 }
             }
-            .frame(
-                maxWidth: .infinity,
-                maxHeight: .infinity
-            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding()
 
-            Button("Save QR...") {
+            Button("Save as PNG…", systemImage: "square.and.arrow.down") {
                 saveQRCode()
             }
-            .disabled(text.isEmpty)
+            .buttonStyle(.borderedProminent)
+            .keyboardShortcut("s", modifiers: .command)
+            .disabled(text.isEmpty || qrImage == nil)
         }
-        .padding()
+        .padding(24)
         .frame(
-            minWidth: 400,
+            minWidth: 420,
             idealWidth: 600,
             maxWidth: .infinity,
-            minHeight: 500,
+            minHeight: 520,
             idealHeight: 700,
             maxHeight: .infinity
         )
+        .alert(
+            "Could not save QR code",
+            isPresented: Binding(
+                get: { errorMessage != nil },
+                set: { if !$0 { errorMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "Unknown error")
+        }
     }
-    private func generateQRCodeCIImage(from string: String) -> CIImage? {
+
+    private func saveQRCode() {
+        guard let pngData = QRCodeGenerator.pngData(for: text) else {
+            errorMessage = "Try using shorter text."
+            return
+        }
+
+        let panel = NSSavePanel()
+        panel.title = "Save QR Code"
+        panel.nameFieldStringValue = "qrcode.png"
+        panel.allowedContentTypes = [.png]
+        panel.canCreateDirectories = true
+
+        guard panel.runModal() == .OK, let fileURL = panel.url else {
+            return
+        }
+
+        do {
+            try pngData.write(to: fileURL, options: .atomic)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}
+
+private enum QRCodeGenerator {
+    private static let context = CIContext(options: [.useSoftwareRenderer: false])
+    private static let scale: CGFloat = 10
+
+    static func image(for string: String) -> NSImage? {
+        guard let cgImage = cgImage(for: string) else {
+            return nil
+        }
+
+        return NSImage(
+            cgImage: cgImage,
+            size: NSSize(width: cgImage.width, height: cgImage.height)
+        )
+    }
+
+    static func pngData(for string: String) -> Data? {
+        guard let cgImage = cgImage(for: string) else {
+            return nil
+        }
+
+        return NSBitmapImageRep(cgImage: cgImage).representation(
+            using: .png,
+            properties: [:]
+        )
+    }
+
+    private static func cgImage(for string: String) -> CGImage? {
         guard !string.isEmpty else {
             return nil
         }
@@ -68,77 +143,16 @@ struct ContentView: View {
             return nil
         }
 
-        return outputImage.transformed(
-            by: CGAffineTransform(scaleX: 10, y: 10)
+        let scaledImage = outputImage.transformed(
+            by: CGAffineTransform(scaleX: scale, y: scale)
         )
-    }
 
-    private func generateQRCodeImage(from string: String) -> NSImage? {
-        guard let ciImage = generateQRCodeCIImage(from: string),
-              let cgImage = context.createCGImage(
-                  ciImage,
-                  from: ciImage.extent
-              ) else {
-            return nil
-        }
-
-        return NSImage(
-            cgImage: cgImage,
-            size: NSSize(
-                width: cgImage.width,
-                height: cgImage.height
-            )
-        )
-    }
-
-    private func saveQRCode() {
-        guard let ciImage = generateQRCodeCIImage(from: text) else {
-            print("Error generating QR code")
-            return
-        }
-
-        let panel = NSSavePanel()
-        panel.title = "Save QR Code"
-        panel.nameFieldStringValue = "qrcode.png"
-        panel.allowedContentTypes = [.png]
-        panel.canCreateDirectories = true
-
-        guard panel.runModal() == .OK,
-              let fileURL = panel.url else {
-            return
-        }
-
-        guard let cgImage = context.createCGImage(
-            ciImage,
-            from: ciImage.extent
-        ) else {
-            print("Error creating CGImage")
-            return
-        }
-
-        let bitmap = NSBitmapImageRep(cgImage: cgImage)
-
-        guard let pngData = bitmap.representation(
-            using: .png,
-            properties: [:]
-        ) else {
-            print("Error creating PNG data")
-            return
-        }
-
-        do {
-            try pngData.write(
-                to: fileURL,
-                options: .atomic
-            )
-
-            print("Saved: \(fileURL.path)")
-        } catch {
-            print("Save error: \(error.localizedDescription)")
-        }
+        return context.createCGImage(scaledImage, from: scaledImage.extent)
     }
 }
 
-#Preview {
-    ContentView()
+struct ContentView_Previews: PreviewProvider {
+    static var previews: some View {
+        ContentView()
+    }
 }
