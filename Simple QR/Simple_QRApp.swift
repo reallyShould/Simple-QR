@@ -2,7 +2,7 @@
 //  Simple_QRApp.swift
 //  Simple QR
 //
-//  Created by Никита on 17.07.2026.
+//  Created by reallyShould on 17.07.2026.
 //
 
 import SwiftUI
